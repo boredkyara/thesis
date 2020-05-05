@@ -150,3 +150,18 @@ simulateDCC <- function(a, b, Q, a0, A, B, nobs, ncut=1000){
 # bekk.sim.fit$est.params
 # plot(sim$eps[[1]], type="l")
 # plot(sim$eps[[2]], type="l")
+
+
+
+
+
+# sink("/dev/null")
+# bekk.fit = suppressWarnings(BEKK(eps=bekk.sim$e, order=c(1,1),
+#                 params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+#                 method="L-BFGS-B", verbose=FALSE))
+# sink()
+# 
+# bekk.fit$est.params
+# 
+# plot(bekk.sim$e[,1], type="l")
+# plot(bekk.sim$e[,2], type="l")

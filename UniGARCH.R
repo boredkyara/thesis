@@ -3,7 +3,6 @@
 # Kyara Lucas 530510kl
 # -----------------------------------------
 
-# Import libraries
 library(fGarch)
 set.seed(1234)
 
@@ -22,7 +21,6 @@ set.seed(1234)
 # sigma         series of generated sigma values
 # e             series of generated residual values
 # par_true      list of true parameter values
-
 uniGarch <- function(Tnr, mu, w, a, b){
   par_true <- list("mu"=mu,"omega"=w, "alpha"=a, "beta"=b) # List of our model paramters
   sigma_t <- sqrt(w/(1-a-b)) # Set initial volatility
