@@ -7,6 +7,7 @@
 library(mvtnorm)
 library(mgarchBEKK)
 library(expm)
+source("GMV.R")
 set.seed(1234)
 
 # Generate Multivariate BEKK(1,1,1) Garch Series
@@ -20,7 +21,7 @@ set.seed(1234)
 # A list with the following components:
 # epsi        (T x K) data matrix
 # H           H_1, ... , H_T conditional covariance (K x K x T) matrix
-multiBEKKGarch <- function(K=2, Tt=100, A, B, C){
+multiBEKKGarch <- function(K, Tt, A, B, C){
   Tt = Tt + 50 # We discard the first 50 values
   
   ## Initialize empty list of matrices
@@ -49,25 +50,30 @@ multiBEKKGarch <- function(K=2, Tt=100, A, B, C){
 # Calculate bootstrap CI's for BEKK(1,1,1)
 # 
 # Input:
-# data          A 'data' list as outputted by uni_garch() function
+# data          A 'data' list as outputted by multiBEKKGarch() function
 # B             Number of bootstrap replicates 
 #
 # Output:
 # A list with the following components:
-# intervals     Confidence intervals for each GARCH(1,1) parameter
-# par_fit       Estimated parameter
+# intervals     Confidence intervals for each parameter
+# par_fit       Estimated parameters
 pascualCI <- function(data, B){
-  Tt = dim(data)[1]
-  K = dim(data)[2]
+  y = data$e
+  H = data$H
+  Tt = dim(data$e)[1]
+  K = dim(data$e)[2]
   
-  ## 1. Estimate (A,B,C) using QML
+  ### 1. Estimate (A,B,C) using QML
   sink("/dev/null")
-  bekk.fit = suppressWarnings(BEKK(eps=data, order=c(1,1),
-                                   params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
-                                   method="L-BFGS-B", verbose=FALSE))
+  bekk.fit = suppressWarnings(BEKK(eps=y, order=c(1,1),
+                                    params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+                                    method="L-BFGS-B", verbose=FALSE))
   sink()
+  # 
+  # par_fit = as.vector(c(bekk.fit$est.params[[1]], bekk.fit$est.params[[2]], bekk.fit$est.params[[3]]))
   
-  par_fit = as.vector(c(bekk.fit$est.params[[1]], bekk.fit$est.params[[2]], bekk.fit$est.params[[3]]))
+  ## 1. Estimate weights using GMV
+  par_fit = GMV(H[Tt,,])
   
   ## 2. Estimate the conditional var/covariances
   H_hat = array(rep(1, Tt*K*K), dim=c(Tt, K, K))
@@ -83,24 +89,20 @@ pascualCI <- function(data, B){
   H_hat[1,,]  = matrix(data=temp, nrow=K, ncol=K)
   
   for(t in 2:Tt){
-    H_hat[t,,] = crossprod(C_hat) + t(A_hat) %*% data[t-1,] %*% t(data[t-1,]) %*% A_hat + t(B_hat) %*% H_hat[t-1,,] %*% B_hat
+    H_hat[t,,] = crossprod(C_hat) + t(A_hat) %*% y[t-1,] %*% t(y[t-1,]) %*% A_hat + t(B_hat) %*% H_hat[t-1,,] %*% B_hat
   }
   
   ## 3. Compute residuals by the standardized observations
   z_hat = matrix(data=0, nrow=Tt, ncol=K)
   for(t in 1:Tt){
-    z_hat[t,]= data[t,] %*% solve(chol(H_hat[t,,])) 
+    z_hat[t,]= y[t,] %*% solve(chol(H_hat[t,,])) 
   }
   
-  # mean(z_hat[,1])
-  # var(z_hat[,1])
   
   ### Replicate B bootstrappies
-  replicates <- matrix(nrow = B, ncol = ((3*K^2)))
+  replicates <- matrix(nrow=B, ncol=K)
   for(b in 1:B){
-    sink("/dev/null")
     ## 4. Obtain boostrap replicates
-    
     H_boot = array(rep(1, Tt*K*K), dim=c(Tt, K, K))
     for (t in 1:Tt){
       H_boot[t,,] = matrix(data=1, nrow=K, ncol=K) # Initialize empty 3D matrices for H_boot
@@ -114,16 +116,17 @@ pascualCI <- function(data, B){
       }else{
         H_boot[t,,] = crossprod(C_hat) + t(A_hat) %*% r_boot[t-1,] %*% t(r_boot[t-1,]) %*% A_hat + t(B_hat) %*% H_hat[t-1,,] %*% B_hat
       }
+      ## TODO: Use H_hat[t,,] here?
       r_boot[t,] = chol(H_boot[t,,]) %*% z_hat[sample(nrow(z_hat),1),]
     }
     
     ## 5. Estimate coefficients on bootstrap replicates
-    
-    fit.boot = suppressWarnings(BEKK(eps=r_boot, order=c(1,1),
-                                                   params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
-                                                   method="L-BFGS-B", verbose=FALSE))
-    replicates[b,] = as.vector(c(fit.boot$est.params[[1]], fit.boot$est.params[[2]], fit.boot$est.params[[3]]))
-    sink()
+    #fit.boot = suppressWarnings(BEKK(eps=r_boot, order=c(1,1),
+    #                                               params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+    #                                               method="L-BFGS-B", verbose=FALSE))
+    #replicates[b,] = as.vector(c(fit.boot$est.params[[1]], fit.boot$est.params[[2]], fit.boot$est.params[[3]]))
+    fit.boot = GMV(H=H_boot[Tt,,])
+    replicates[b,] = fit.boot
   }
   
   # Confidence intervals
@@ -139,20 +142,21 @@ pascualCI <- function(data, B){
 # Run simulations for coverage probability
 # 
 # Input:
-# S             Number of simulations         
-# Boot          Number of bootstrap replicates
+# S               Number of simulations         
+# Boot            Number of bootstrap replicates
+# K, Tt, A, B, C  BEKK(1,1,1) DGP parameters
+# trace           Boolean for print statements
 #
 # Output:
 # A vector containing the coverage probabilites for each parameter
 runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
-  nr_params = K*K*3
+  nr_params = K
   
-  sink()
   start.time <- Sys.time()
   cat(sprintf("%s: starting simulation procedure ...\n", start.time))
   
   ## Initiate coverage count
-  coverages = rep(0, 12)
+  coverages = rep(0, nr_params)
   
   ## Simulation loop
   for(s in 1:S){
@@ -160,7 +164,7 @@ runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
     data = multiBEKKGarch(K=K, Tt=Tt, A=A, B=B, C=C)
     
     ## Estimate CI's
-    pascual_results = pascualCI(data=data$e, B=Boot)
+    pascual_results = pascualCI(data=data, B=Boot)
     
     ## Update coverage count
     for(i in 1:nr_params){
@@ -171,14 +175,12 @@ runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
     }
     
     if(trace==TRUE){
-      sink()
       cat(sprintf("%s: %fth simulation completed.\n", Sys.time(), s))
     }
     
   }
   return(coverages/S)
 }
-
 
 ## Set simulation DGP parameters
 K = 2
@@ -189,4 +191,6 @@ B = matrix(B, K, K)
 C = c(1, 0, 0.5, 1)
 C = matrix(C, K, K)
 
-test = runSimulations(S=10, Boot=10, K=K, Tt=1000, A=A, B=B, C=C)
+test = runSimulations(S=10, Boot=999, K=2, Tt=800, A=A, B=B, C=C)
+
+
