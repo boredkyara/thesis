@@ -1,6 +1,7 @@
 # -----------------------------------------
 # Author:
 # Kyara Lucas 530510kl
+# Optimized for compute engine
 # The population is to the sample as the sample is to the bootstrap samples.
 # -----------------------------------------
 
@@ -66,9 +67,10 @@ pascualCI <- function(data, B){
   ### 1. Estimate (A,B,C) using QML
   sink("/dev/null")
   bekk.fit = suppressWarnings(BEKK(eps=y, order=c(1,1),
-                                    params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
-                                    method="L-BFGS-B", verbose=FALSE))
-
+                                   params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+                                   method="L-BFGS-B", verbose=FALSE))
+  sink()
+  
   ## 1. Estimate weights using GMV
   par_fit = GMV(H[Tt,,])
   
@@ -95,10 +97,13 @@ pascualCI <- function(data, B){
     z_hat[t,]= y[t,] %*% solve(chol(H_hat[t,,])) 
   }
   
+  ### Replicate B bootstrappies (in parallel)
+  replicates <- matrix(0, nrow=B, ncol=K)
+  results <- list()
+  n_cores = (detectCores() - 1)
   
-  ### Replicate B bootstrappies
-  replicates <- matrix(nrow=B, ncol=K)
-  for(b in 1:B){
+  ## START MCLAPPLY ##
+  results <- mclapply(X=rep(1,B), mc.cores=n_cores, FUN=function(b){
     
     r_boot = matrix(data=0, nrow=Tt, ncol=K)
     for(t in 1:Tt){
@@ -107,8 +112,8 @@ pascualCI <- function(data, B){
     
     ## 4. Estimate coefficients on bootstrap replicates
     fit.boot = suppressWarnings(BEKK(eps=r_boot, order=c(1,1),
-                                                  params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
-                                                  method="L-BFGS-B", verbose=FALSE))
+                                     params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+                                     method="L-BFGS-B", verbose=FALSE))
     
     C_boot = fit.boot$est.params[[1]]
     A_boot = fit.boot$est.params[[2]]
@@ -129,11 +134,14 @@ pascualCI <- function(data, B){
     }
     
     fit.boot.gmv = GMV(H=H_boot[Tt,,])
-    replicates[b,] = fit.boot.gmv
-  }
+    fit.boot.gmv
+  })
+  ## END MCLAPPLY ##
+  
+  replicates = matrix(unlist(results), ncol=K, byrow=TRUE)
   
   # Confidence intervals
-  intervals = matrix(data=0, nrow=dim(replicates)[2], ncol=2)
+  intervals = matrix(data=0, nrow=K, ncol=2)
   for(i in 1:dim(replicates)[2]){
     intervals[i,] = c(unname(quantile(replicates[,i], c(0.05, 0.95))))
   }
@@ -157,6 +165,10 @@ runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
   
   start.time <- Sys.time()
   cat(sprintf("%s: starting simulation procedure ...\n", start.time))
+  logFile = paste0("simulation ", start.time, ".txt")
+  cat(paste0("Simulation started at ", start.time), file=logFile, append=FALSE, sep = "\n")
+  cat("Coverage probability after every itteration: ", file=logFile, append=TRUE, sep = "\n")
+  cat("---------------------------------------------", file=logFile, append=TRUE, sep = "\n")
   
   ## Initiate coverage count
   coverages = rep(0, nr_params)
@@ -177,6 +189,8 @@ runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
       }
     }
     
+    cat(paste0(coverages/s), file=logFile, append=TRUE, sep = "\n")
+    cat("---------------------------------------------", file=logFile, append=TRUE, sep = "\n")
     if(trace==TRUE){
       cat(sprintf("%s: %fth simulation completed.\n", Sys.time(), s))
     }
@@ -186,6 +200,7 @@ runSimulations <- function(S=10, Boot=10, K=2, Tt=100, A, B, C, trace=TRUE){
 }
 
 ## Set simulation DGP parameters
+Boot = 999
 K = 2
 A = c(0.3, 0, -0.1, 0.3)
 A = matrix(A, K, K)
@@ -194,6 +209,6 @@ B = matrix(B, K, K)
 C = c(1, 0, 0.5, 1)
 C = matrix(C, K, K)
 
-sink()
-test = runSimulations(S=10, Boot=999, K=2, Tt=800, A=A, B=B, C=C)
+test = runSimulations(S=20, Boot=999, K=2, Tt=800, A=A, B=B, C=C)
+
 

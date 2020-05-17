@@ -165,3 +165,52 @@ simulateDCC <- function(a, b, Q, a0, A, B, nobs, ncut=1000){
 # 
 # plot(bekk.sim$e[,1], type="l")
 # plot(bekk.sim$e[,2], type="l")
+
+# # create artificial data with mean 0 and sd 5%
+# nO <- 100 # number of observations
+# nA <- 10  # number of assets
+# mData <- array(rnorm(nO * nA, mean = 0, sd = 0.05), dim = c(nO, nA))
+# 
+# ## 
+# # qp
+# aMat  <- array(1, dim = c(1,nA))
+# bVec  <- 1
+# zeros <- array(0, dim = c(nA,1))
+# solQP <- solve.QP(cov(mData), zeros, t(aMat), bVec, meq = 1)
+
+# plot(data$H[,,1][,1], type="l")
+# plot(H_hat[,,1][,1], type="l")
+
+# 
+# replicates <- matrix(nrow=Boot, ncol=K)
+# for(b in 1:Boot){
+#   replicates[b,] = rep(rnorm(1,0,1),K)
+# }
+# 
+# test <- list()
+# test <- lapply(replicates, function(b){
+#   tmp <- rep(rnorm(1,0,1),K)
+#   tmp
+# })
+# matrix(unlist(test), ncol =K, byrow = TRUE)
+# 
+# replicates <- matrix(nrow=Boot, ncol=K)
+# replicates[b,] <- lapply(Boot, function(b) {
+#   tmp <- rep(rnorm(1,0,1),K)
+#   tmp
+# })
+# 
+# 
+# y <- lapply(seq_along(X), function(ii) {
+#   x <- X[[ii]]
+#   tmp <- sqrt(x)
+#   tmp
+# })
+# 
+# for (ii in seq_along(X)) {
+#   x <- X[[ii]]
+#   tmp <- sqrt(x)  ## Assume this takes a long time
+#   y[[ii]] <- tmp
+# }
+# 
+# 
