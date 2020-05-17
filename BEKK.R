@@ -68,10 +68,7 @@ pascualCI <- function(data, B){
   bekk.fit = suppressWarnings(BEKK(eps=y, order=c(1,1),
                                     params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
                                     method="L-BFGS-B", verbose=FALSE))
-  sink()
-  # 
-  # par_fit = as.vector(c(bekk.fit$est.params[[1]], bekk.fit$est.params[[2]], bekk.fit$est.params[[3]]))
-  
+
   ## 1. Estimate weights using GMV
   par_fit = GMV(H[Tt,,])
   
@@ -102,31 +99,37 @@ pascualCI <- function(data, B){
   ### Replicate B bootstrappies
   replicates <- matrix(nrow=B, ncol=K)
   for(b in 1:B){
-    ## 4. Obtain boostrap replicates
+    
+    r_boot = matrix(data=0, nrow=Tt, ncol=K)
+    for(t in 1:Tt){
+      r_boot[t,] = chol(H_hat[t,,]) %*% z_hat[sample(nrow(z_hat),1),]
+    }
+    
+    ## 4. Estimate coefficients on bootstrap replicates
+    fit.boot = suppressWarnings(BEKK(eps=r_boot, order=c(1,1),
+                                                  params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
+                                                  method="L-BFGS-B", verbose=FALSE))
+    
+    C_boot = fit.boot$est.params[[1]]
+    A_boot = fit.boot$est.params[[2]]
+    B_boot = fit.boot$est.params[[3]]
+    
+    # 5. Obtain boostrap replicates
     H_boot = array(rep(1, Tt*K*K), dim=c(Tt, K, K))
     for (t in 1:Tt){
       H_boot[t,,] = matrix(data=1, nrow=K, ncol=K) # Initialize empty 3D matrices for H_boot
     }
     
-    r_boot = matrix(data=0, nrow=Tt, ncol=K)
-    
     for(t in 1:Tt){
       if(t==1){
         H_boot[t,,] = H_hat[1,,]
       }else{
-        H_boot[t,,] = crossprod(C_hat) + t(A_hat) %*% r_boot[t-1,] %*% t(r_boot[t-1,]) %*% A_hat + t(B_hat) %*% H_hat[t-1,,] %*% B_hat
+        H_boot[t,,] = crossprod(C_boot) + t(A_boot) %*% r_boot[t-1,] %*% t(r_boot[t-1,]) %*% A_boot + t(B_boot) %*% H_boot[t-1,,] %*% B_boot
       }
-      ## TODO: Use H_hat[t,,] here?
-      r_boot[t,] = chol(H_boot[t,,]) %*% z_hat[sample(nrow(z_hat),1),]
     }
     
-    ## 5. Estimate coefficients on bootstrap replicates
-    #fit.boot = suppressWarnings(BEKK(eps=r_boot, order=c(1,1),
-    #                                               params = c(0.8, 0.3, 0.8, 0.1, 0.1, 0.1, 0.1, 1, 0, 0, 1), # mgarchBEKK::BEKK
-    #                                               method="L-BFGS-B", verbose=FALSE))
-    #replicates[b,] = as.vector(c(fit.boot$est.params[[1]], fit.boot$est.params[[2]], fit.boot$est.params[[3]]))
-    fit.boot = GMV(H=H_boot[Tt,,])
-    replicates[b,] = fit.boot
+    fit.boot.gmv = GMV(H=H_boot[Tt,,])
+    replicates[b,] = fit.boot.gmv
   }
   
   # Confidence intervals
@@ -191,6 +194,6 @@ B = matrix(B, K, K)
 C = c(1, 0, 0.5, 1)
 C = matrix(C, K, K)
 
+sink()
 test = runSimulations(S=10, Boot=999, K=2, Tt=800, A=A, B=B, C=C)
-
 
